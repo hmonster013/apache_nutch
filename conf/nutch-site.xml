@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+
+
+<configuration>
+    <property>
+            <name>http.agent.name</name>
+            <value>My Nutch Spider</value>
+    </property>
+
+    <property>
+        <name>plugin.includes</name>
+        <value>protocol-http|urlfilter-regex|parse-(html|tika)|index-(basic|anchor)|indexer-solr|scoring-opic</value>        
+    </property>
+
+    <property>
+        <name>gora.datastore.default</name>
+        <value>org.apache.gora.cassandra.store.CassandraStore</value>
+    </property>
+    
+    <property>
+        <name>gora.cassandra.servers</name>
+        <value>cassandra:9042</value>
+    </property>
+    
+    <property>
+        <name>gora.cassandra.keyspace</name>
+        <value>nutch</value>
+    </property>
+</configuration>

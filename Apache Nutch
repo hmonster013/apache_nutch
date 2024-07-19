@@ -1,0 +1,168 @@
+-- Apache Nutch
+1. Cài đặt và sử dụng các nền tảng đó
+2. Đánh giá thử nghiệm crawler dữ liệu một số website về danh sách các trường học chẳng hạn
+Đánh giá:
+- Có khả năng thu thập được các nguồn website (url) trên internet từ một hoặc nhiều URL source ban đầu
+- Có khả năng thu thập thông tin thô từ nhiều nguồn website, thông tin thu thập có thể lưu trữ vào cơ sở dữ liệu NoSQL như mongo, cassandra, .. 
+- Có khả năng mở rộng nếu mở rộng ra quy mô lớn như nhiều URL
+
+-- Thông tin chung
+	-  Nutch cung cấp các giao diện có thể mở rộng như Parse, Index và ScoringFilter cho các triển khai tùy chỉnh, ví dụ như Apache Tika để phân tích cú pháp
+	- pluggable indexing exists for Apache Solr, Elastic Search, SolrCloud, etc
+
+-- Thu thập dữ liệu trang web đầu tiên của bạn
+	- Nutch yêu cầu hai thay đổi cấu hình trước khi có thể thu thập thông tin từ một trang web:
+		+ Tùy chỉnh các thuộc tính thu thập thông tin của bạn, trong đó ít nhất, bạn cung cấp tên cho trình thu thập thông tin của mình để các máy chủ bên ngoài có thể nhận dạng
+		+ Thiết lập danh sách seed URL để thu thập
+	- Hướng dẫn từng bước: Tạo cơ sở dữ liệu crawldb với danh sách các URL
+		+ Khởi tạo từ danh sách seed ban đầu.
+		+ Tùy chọn này thay thế cho việc tạo danh sách seed như đã đề cập ở đây.
+		
+			bin/nutch inject crawl/crawldb urls
+		
+		+ Bây giờ chúng ta đã có một cơ sở dữ liệu Web với các URL chưa được crawl.
+
+	- Hướng dẫn từng bước: Crawling (Thu thập dữ liệu)
+		+ Để thu thập dữ liệu, trước tiên chúng ta tạo một danh sách fetch từ cơ sở dữ liệu:
+
+			bin/nutch generate crawl/crawldb crawl/segments
+			
+		+ Lệnh này tạo ra một danh sách fetch cho tất cả các trang cần thu thập dữ liệu. Danh sách fetch được đặt trong một thư mục segment mới tạo. Thư mục segment được đặt tên theo thời điểm nó được tạo. Chúng ta lưu tên của segment này trong biến shell s1:
+
+			s1=`ls -d crawl/segments/2* | tail -1`
+			echo $s1
+			
+		+ Bây giờ chúng ta chạy fetcher trên segment này với:
+
+			bin/nutch fetch $s1
+			
+		+ Sau đó, chúng ta phân tích các mục đã lấy:
+
+			bin/nutch parse $s1
+			
+		+ Khi hoàn thành, chúng ta cập nhật cơ sở dữ liệu với kết quả của quá trình fetch:
+
+			bin/nutch updatedb crawl/crawldb $s1
+			
+		+ Bây giờ cơ sở dữ liệu chứa cả các mục đã được cập nhật cho tất cả các trang ban đầu cũng như các mục mới tương ứng với các trang mới được phát hiện từ tập ban đầu.
+
+	- Thu thập thêm dữ liệu
+		+ Bây giờ chúng ta tạo và thu thập một segment mới chứa 1,000 trang có điểm cao nhất:
+
+			bin/nutch generate crawl/crawldb crawl/segments -topN 1000
+			s2=`ls -d crawl/segments/2* | tail -1`
+			echo $s2
+
+			bin/nutch fetch $s2
+			bin/nutch parse $s2
+			bin/nutch updatedb crawl/crawldb $s2
+			
+		+ Chúng ta hãy thu thập thêm một vòng nữa:
+
+			bin/nutch generate crawl/crawldb crawl/segments -topN 1000
+			s3=`ls -d crawl/segments/2* | tail -1`
+			echo $s3
+
+			bin/nutch fetch $s3
+			bin/nutch parse $s3
+			bin/nutch updatedb crawl/crawldb $s3
+			
+		+ Tại thời điểm này, chúng ta đã thu thập được vài ngàn trang. Hãy đảo ngược các liên kết và lập chỉ mục chúng!
+		
+	- Hướng dẫn từng bước: Invertlinks (Đảo ngược liên kết)
+		+ Trước khi lập chỉ mục, chúng ta cần đảo ngược tất cả các liên kết để có thể lập chỉ mục văn bản neo (anchor text) đầu vào với các trang.
+			
+			bin/nutch invertlinks crawl/linkdb -dir crawl/segments
+		
+		+ Bây giờ chúng ta đã sẵn sàng để tìm kiếm với Apache Solr.
+
+	
+	- Tạo core nutch:
+	
+			mkdir -p ./server/solr/configsets/nutch/
+			cp -r ./server/solr/configsets/_default/* ./server/solr/configsets/nutch/
+		
+		+ Sao chép tệp 'schema.xml' của Nutch vào thư mục cấu hình của Solr:
+		
+			docker cp .\schema.xml apache_solr:/opt/solr-8.11.2/server/solr/configsets/nutch/conf/
+		
+		+ Đảm bảo không có tệp managed-schema "cản đường":
+			
+			rm ./server/solr/configsets/nutch/conf/managed-schema
+			
+		+ Restart máy chủ và đăng nhập với not root
+		+ Tạo core "nutch":
+			
+			./bin/solr create -c nutch -d ./server/solr/configsets/nutch/conf/
+	
+	- Hướng dẫn từng bước: Lập chỉ mục vào Apache Solr
+		+ Bây giờ chúng ta đã sẵn sàng để lập chỉ mục tất cả các tài nguyên. Để biết thêm thông tin, hãy xem các tùy chọn dòng lệnh.
+		
+			bin/nutch index crawl/crawldb/ -linkdb crawl/linkdb/ crawl/segments/20131108063838/ -filter -normalize -deleteGone
+		
+		+ Với lệnh trên, chúng ta lập chỉ mục cơ sở dữ liệu crawl (crawldb), cơ sở dữ liệu liên kết (linkdb), và segment được chỉ định, sử dụng các tùy chọn -filter để lọc, -normalize để chuẩn hóa và -deleteGone để xóa các trang không còn tồn tại.
+	
+
+-- Tùy chỉnh thuộc tính thu thập thông tin của bạn
+	- Thuộc tính thu thập thông tin mặc định có thể được xem và chỉnh sửa trong {{conf/nutch-default.xml }} - nơi hầu hết các thuộc tính này có thể được sử dụng mà không cần sửa đổi
+	- Tệp này conf/nutch-site.xml đóng vai trò là nơi để thêm các thuộc tính thu thập dữ liệu tùy chỉnh của riêng bạn ghi đè lên conf/nutch-default.xml. Sửa đổi duy nhất cần thiết cho tệp này là ghi đè lên trường value của {{http.agent.name }}, ví dụ:
+	<property> 
+	 <name>http.agent.name</name> 
+	 <value>Nhện Nutch của tôi</value> 
+	</property>
+	- Tạo danh sách hạt giống URL
+		+ Danh sách seed URL bao gồm danh sách các trang web, mỗi trang một dòng, mà nutch sẽ tìm kiếm để thu thập thông tin
+		+ Tệp conf/regex-urlfilter.txt sẽ cung cấp Regular Expressions cho phép nutch lọc và thu hẹp các loại tài nguyên web để thu thập và tải xuống
+
+	- Dữ liệu Nutch bao gồm:
+		+ Cơ sở dữ liệu thu thập thông tin, hay crawldb. Cơ sở dữ liệu này chứa thông tin về mọi URL mà Nutch biết, bao gồm cả thông tin có được thu thập hay không và nếu có thì khi nào.
+		+ Cơ sở dữ liệu liên kết hoặc linkdb. Cơ sở dữ liệu này chứa danh sách các liên kết đã biết đến từng URL, bao gồm cả source URL và văn bản neo của liên kết.
+		+ Một tập hợp các phân đoạn. Mỗi phân đoạn là một tập hợp các URL được lấy như một đơn vị. Các phân đoạn là các thư mục có các thư mục con sau:
+			o a crawl_generate đặt tên cho một tập hợp các URL cần được lấy
+			o a crawl_fetch chứa trạng thái tìm nạp của mỗi URL
+			o a content chứa nội dung thô được lấy từ mỗi URL
+			o a parse_text chứa văn bản đã phân tích của mỗi URL
+			o a parse_data chứa các liên kết ngoài và siêu dữ liệu được phân tích từ mỗi URL
+			o a crawl_parse chứa các URL liên kết ngoài, được sử dụng để cập nhật crawldb
+
+-- Câu lệnh
+	- bin/crawl <seedDir> -dir <crawlDir> [options]
+	- Lệnh "bin/nutch inject crawl/crawldb urls" trong Apache Nutch có tác dụng là nhập các URL từ tệp urls vào cơ sở dữ liệu crawl crawl/crawldb. Đây là bước cần thiết để khởi tạo cơ sở dữ liệu crawl ban đầu trong quá trình sử dụng Nutch.
+	- Lệnh "bin/nutch generate crawl/crawldb" crawl/segments trong Apache Nutch có tác dụng là tạo ra một segment mới để crawl dựa trên các URL có sẵn trong cơ sở dữ liệu crawl (crawl/crawldb). Đây là một bước quan trọng trong quá trình crawl của Nutch.
+	- Cách sử dụng: Indexer (<crawldb> | -nocrawldb) (<segment> ... | -dir <segments>) [tùy chọn chung] 
+
+	Lập chỉ mục các phân đoạn được chỉ định bằng cách sử dụng plugin lập chỉ mục được cấu hình 
+
+	CrawlDb là tùy chọn nhưng bắt buộc phải gửi yêu cầu xóa các mục trùng lặp 
+	và đọc điểm/tăng cường/trọng số tài liệu thích hợp được truyền cho người lập chỉ mục. 
+
+	Đối số bắt buộc: 
+
+			<crawldb> đường dẫn đến CrawlDb hoặc 
+			cờ -nocrawldb để chỉ ra rằng không sử dụng CrawlDb 
+
+			<segment> ... đường dẫn đến phân đoạn hoặc 
+			-dir <segments> đường dẫn đến thư mục segments/ 
+							(tất cả các thư mục con được đọc dưới dạng segments) 
+
+	Tùy chọn chung: 
+
+			-linkdb <linkdb> sử dụng LinkDb để lập chỉ mục văn bản neo của các liên kết đến 
+			-params k1=v1&k2=v2... tham số được truyền cho plugin lập chỉ mục 
+									(thông qua thuộc tính indexer.additional.params) 
+
+			-noCommit không gọi phương thức commit của plugin lập chỉ mục 
+			-deleteGone gửi yêu cầu xóa cho lỗi 404, chuyển hướng, trùng lặp 
+			-filter bỏ qua các tài liệu có URL bị bộ lọc URL được cấu hình từ chối 
+			-normalize chuẩn hóa URL trước khi lập chỉ mục 
+			-addBinaryContent lập chỉ mục nội dung thô/nhị phân trong trường `binaryContent` 
+			-base64 sử dụng mã hóa Base64 cho nội dung nhị phân 
+
+	Ví dụ: bin/nutch index crawl/segments -solr http://localhost:8983/solr/nutch
+
+-- Lưu ý 
+	- segment là một đơn vị cơ bản trong quá trình crawl và thu thập dữ liệu từ các trang web. Mỗi segment đại diện cho một tập hợp các tài nguyên web (các trang web và liên kết giữa chúng) mà Nutch sẽ thực hiện các hoạt động như fetch, parse và index. 
+	- Được rồi, lõi là gì? Lõi Solr là một phiên bản độc lập của chỉ mục Lucene. Điều này có nghĩa là, để sử dụng Solr, bạn sẽ cần tạo một thứ gọi là lõi sẽ chạy để thực hiện các hoạt động của mình. Lõi này sẽ cần các tài nguyên riêng như cấu hình, lược đồ và phần còn lại. Bạn có thể tạo nhiều lõi nhất có thể trên một máy duy nhất. Điều này hợp lý vì các nguồn dữ liệu khác nhau có thể yêu cầu các cấu hình khác nhau. Giống như trong trường hợp của chúng tôi, Nutch sẽ có cách cấu trúc dữ liệu, có thể khác với các nguồn dữ liệu khác. Theo quan điểm này, các lõi cụ thể phải có các tài nguyên riêng biệt.
+	- Index-writer là một thành phần được sử dụng để gửi dữ liệu Nutch thu thập đến một máy chủ bên ngoài. Điều quan trọng cần lưu ý là Solr và Nutch chạy độc lập và máy chủ Solr không phải là máy chủ duy nhất bạn có thể đẩy dữ liệu Nutch đến. index-writer.xml Solr xử lý việc đó cho chúng tôi.
+
+
