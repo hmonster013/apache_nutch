@@ -1,3 +1,6 @@
 requests
 cassandra-driver==3.28.0
 geomet==0.2.1.post1
+subprocess
+nltk
+numpy

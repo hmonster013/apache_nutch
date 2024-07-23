@@ -1,1 +1,2 @@
+-\.(gif|GIF|jpg|JPG|png|PNG|ico)
 +.

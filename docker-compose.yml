@@ -8,9 +8,12 @@ services:
       - ./data:/opt/nutch/crawl
       - ./conf/nutch-site.xml:/opt/nutch/conf/nutch-site.xml
       - ./conf/regex-urlfilter.txt:/opt/nutch/conf/regex-urlfilter.txt
+      - ./conf/index-writers.xml:/opt/nutch/conf/index-writers.xml
       - ./urls/seed.txt:/opt/nutch/urls/seed.txt
     environment:
       - NUTCH_HOME=/opt/nutch
+    ports:
+      - 8081:8081
     networks:
       - apache
     command: ["tail", "-f", "/dev/null"]  # Dòng này giữ container sống
